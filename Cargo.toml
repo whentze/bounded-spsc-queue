@@ -11,7 +11,11 @@ documentation = "https://polyfractal.github.io/bounded-spsc-queue/bounded_spsc_q
 keywords = ["data-structures"]
 readme = "README.md"
 
+[profile.bench]
+debug = true
 
+[profile.release]
+debug = true
 
 [lib]
 name = "bounded_spsc_queue"
