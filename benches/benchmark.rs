@@ -199,8 +199,8 @@ fn bench_rb(b: &mut Bencher) {
     let (prod, cons) = (rb.producer(), rb.consumer());
 
     b.iter(|| {
-        prod.write(&[1]);
-        cons.read(&mut [0]);
+        let _ = prod.write(&[1]);
+        let _ = cons.read(&mut [0]);
     });
 }
 
@@ -216,7 +216,7 @@ fn bench_rb_threaded(b: &mut Bencher) {
         while flag_clone.load(Ordering::Acquire) == false {
             // Try to do as much work as possible without checking the atomic
             for _ in 0..400 {
-                cons.read(&mut [0]);
+                let _ = cons.read(&mut [0]);
             }
         }
     });
@@ -228,7 +228,7 @@ fn bench_rb_threaded(b: &mut Bencher) {
 
     // We have to loop a minimum of 400 times to guarantee the other thread shuts down
     for _ in 0..400 {
-        prod.write(&[1]);
+        let _ = prod.write(&[1]);
     }
 }
 
@@ -236,7 +236,7 @@ fn bench_atomicring(b: &mut Bencher) {
     let ring = AtomicRingBuffer::with_capacity(QUE_LEN);
 
     b.iter(|| {
-        ring.try_push(1);
+        let _ = ring.try_push(1);
         ring.try_pop();
     });
 }
