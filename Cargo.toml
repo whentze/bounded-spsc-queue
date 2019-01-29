@@ -25,3 +25,4 @@ harness = false
 criterion = "0.2.3"
 time = "0.1.39"
 rb = "0.3.2"
+atomicring = "1.1.2"

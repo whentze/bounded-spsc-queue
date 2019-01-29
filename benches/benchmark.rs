@@ -1,5 +1,5 @@
 extern crate bounded_spsc_queue;
-extern crate rb;
+
 #[macro_use]
 extern crate criterion;
 extern crate time;
@@ -12,15 +12,21 @@ use std::sync::mpsc::sync_channel;
 use std::sync::Arc;
 
 // rb for comparison
-use rb::{SpscRb, RB, RbConsumer, RbProducer};
+extern crate rb;
+use rb::{RbConsumer, RbProducer, SpscRb, RB};
 
-const QUE_LEN : usize = 512;
+//atomicring for comparison
+extern crate atomicring;
+use atomicring::AtomicRingBuffer;
+
+const QUE_LEN: usize = 512;
 
 criterion_group!(
     benches,
     bench_single_thread_chan,
     bench_single_thread_spsc,
     bench_single_thread_rb,
+    bench_single_thread_atomicring,
     bench_threaded_chan,
     bench_threaded_spsc,
     bench_threaded_rb,
@@ -39,6 +45,10 @@ fn bench_single_thread_spsc(c: &mut Criterion) {
 
 fn bench_single_thread_rb(c: &mut Criterion) {
     c.bench_function("bench_single_rb", bench_rb);
+}
+
+fn bench_single_thread_atomicring(c: &mut Criterion) {
+    c.bench_function("bench_single_atomicring", bench_atomicring);
 }
 
 fn bench_threaded_chan(c: &mut Criterion) {
@@ -190,7 +200,7 @@ fn bench_rb(b: &mut Bencher) {
 
     b.iter(|| {
         prod.write(&[1]);
-        cons.read(&mut[0]);
+        cons.read(&mut [0]);
     });
 }
 
@@ -206,7 +216,7 @@ fn bench_rb_threaded(b: &mut Bencher) {
         while flag_clone.load(Ordering::Acquire) == false {
             // Try to do as much work as possible without checking the atomic
             for _ in 0..400 {
-                cons.read(&mut[0]);
+                cons.read(&mut [0]);
             }
         }
     });
@@ -222,3 +232,11 @@ fn bench_rb_threaded(b: &mut Bencher) {
     }
 }
 
+fn bench_atomicring(b: &mut Bencher) {
+    let ring = AtomicRingBuffer::with_capacity(QUE_LEN);
+
+    b.iter(|| {
+        ring.try_push(1);
+        ring.try_pop();
+    });
+}
