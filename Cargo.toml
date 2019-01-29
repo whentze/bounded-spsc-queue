@@ -24,3 +24,4 @@ harness = false
 [dev-dependencies]
 criterion = "0.2.3"
 time = "0.1.39"
+rb = "0.3.2"

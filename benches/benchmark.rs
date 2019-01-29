@@ -1,4 +1,5 @@
 extern crate bounded_spsc_queue;
+extern crate rb;
 #[macro_use]
 extern crate criterion;
 extern crate time;
@@ -10,12 +11,19 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc::sync_channel;
 use std::sync::Arc;
 
+// rb for comparison
+use rb::{SpscRb, RB, RbConsumer, RbProducer};
+
+const QUE_LEN : usize = 512;
+
 criterion_group!(
     benches,
     bench_single_thread_chan,
     bench_single_thread_spsc,
+    bench_single_thread_rb,
     bench_threaded_chan,
     bench_threaded_spsc,
+    bench_threaded_rb,
     bench_threaded_reverse_chan,
     bench_threaded_reverse_spsc
 );
@@ -29,12 +37,20 @@ fn bench_single_thread_spsc(c: &mut Criterion) {
     c.bench_function("bench_single_spsc", bench_spsc);
 }
 
+fn bench_single_thread_rb(c: &mut Criterion) {
+    c.bench_function("bench_single_rb", bench_rb);
+}
+
 fn bench_threaded_chan(c: &mut Criterion) {
     c.bench_function("bench_threaded_chan", bench_chan_threaded);
 }
 
 fn bench_threaded_spsc(c: &mut Criterion) {
     c.bench_function("bench_threaded_spsc", bench_spsc_threaded);
+}
+
+fn bench_threaded_rb(c: &mut Criterion) {
+    c.bench_function("bench_threaded_rb", bench_rb_threaded);
 }
 
 fn bench_threaded_reverse_chan(c: &mut Criterion) {
@@ -46,7 +62,7 @@ fn bench_threaded_reverse_spsc(c: &mut Criterion) {
 }
 
 fn bench_chan(b: &mut Bencher) {
-    let (tx, rx) = sync_channel::<u8>(500);
+    let (tx, rx) = sync_channel::<u8>(QUE_LEN);
     b.iter(|| {
         tx.send(1).unwrap();
         rx.recv().unwrap()
@@ -54,7 +70,7 @@ fn bench_chan(b: &mut Bencher) {
 }
 
 fn bench_chan_threaded(b: &mut Bencher) {
-    let (tx, rx) = sync_channel::<u8>(500);
+    let (tx, rx) = sync_channel::<u8>(QUE_LEN);
     let flag = AtomicBool::new(false);
     let arc_flag = Arc::new(flag);
 
@@ -80,7 +96,7 @@ fn bench_chan_threaded(b: &mut Bencher) {
 }
 
 fn bench_chan_threaded2(b: &mut Bencher) {
-    let (tx, rx) = sync_channel::<u8>(500);
+    let (tx, rx) = sync_channel::<u8>(QUE_LEN);
     let flag = AtomicBool::new(false);
     let arc_flag = Arc::new(flag);
 
@@ -106,7 +122,7 @@ fn bench_chan_threaded2(b: &mut Bencher) {
 }
 
 fn bench_spsc(b: &mut Bencher) {
-    let (p, c) = bounded_spsc_queue::make(500);
+    let (p, c) = bounded_spsc_queue::make(QUE_LEN);
 
     b.iter(|| {
         p.push(1);
@@ -115,7 +131,7 @@ fn bench_spsc(b: &mut Bencher) {
 }
 
 fn bench_spsc_threaded(b: &mut Bencher) {
-    let (p, c) = bounded_spsc_queue::make(500);
+    let (p, c) = bounded_spsc_queue::make(QUE_LEN);
 
     let flag = AtomicBool::new(false);
     let arc_flag = Arc::new(flag);
@@ -142,7 +158,7 @@ fn bench_spsc_threaded(b: &mut Bencher) {
 }
 
 fn bench_spsc_threaded2(b: &mut Bencher) {
-    let (p, c) = bounded_spsc_queue::make(500);
+    let (p, c) = bounded_spsc_queue::make(QUE_LEN);
 
     let flag = AtomicBool::new(false);
     let arc_flag = Arc::new(flag);
@@ -167,3 +183,42 @@ fn bench_spsc_threaded2(b: &mut Bencher) {
         c.try_pop();
     }
 }
+
+fn bench_rb(b: &mut Bencher) {
+    let rb = SpscRb::new(QUE_LEN);
+    let (prod, cons) = (rb.producer(), rb.consumer());
+
+    b.iter(|| {
+        prod.write(&[1]);
+        cons.read(&mut[0]);
+    });
+}
+
+fn bench_rb_threaded(b: &mut Bencher) {
+    let rb = SpscRb::new(QUE_LEN);
+    let (prod, cons) = (rb.producer(), rb.consumer());
+
+    let flag = AtomicBool::new(false);
+    let arc_flag = Arc::new(flag);
+
+    let flag_clone = arc_flag.clone();
+    thread::spawn(move || {
+        while flag_clone.load(Ordering::Acquire) == false {
+            // Try to do as much work as possible without checking the atomic
+            for _ in 0..400 {
+                cons.read(&mut[0]);
+            }
+        }
+    });
+
+    b.iter(|| prod.write(&[1]));
+
+    let flag_clone = arc_flag.clone();
+    flag_clone.store(true, Ordering::Release);
+
+    // We have to loop a minimum of 400 times to guarantee the other thread shuts down
+    for _ in 0..400 {
+        prod.write(&[1]);
+    }
+}
+
